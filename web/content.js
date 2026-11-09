@@ -19,9 +19,11 @@
   let reply;
   try {
     reply = await browser.runtime.sendMessage({ type: "store", text, src: location.href });
-  } catch {
+  } catch (error) {
+    console.warn("mdviewer: store failed:", error?.name ?? "unknown");
     return;
   }
   // Only a stored document navigates: on an error the raw page stays, so the viewer-to-src path cannot loop.
   if (reply && typeof reply.url === "string") location.replace(reply.url);
+  else console.warn("mdviewer: store failed:", reply?.reason ?? "no-reply");
 })();
