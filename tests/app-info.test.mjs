@@ -58,6 +58,40 @@ for (const [platform, plist] of [["iOS", ios], ["macOS", macos]]) {
   });
 }
 
+function firstCapture(pattern, text, label) {
+  const match = pattern.exec(text);
+  assert.ok(match, `${label} is written where the test expects it`);
+  return match[1];
+}
+
+const repoFile = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("the Swift scheme handler and the viewer agree on the document path", async () => {
+  const handler = await repoFile("MDViewer/App/ViewerSchemeHandler.swift");
+  const source = await repoFile("web/viewer/source.js");
+  assert.equal(
+    firstCapture(/path == "([^"]+)"/, handler, "the handler's document path"),
+    firstCapture(/fetch\("([^"]+)"\)/, source, "the viewer's document fetch"),
+  );
+});
+
+test("the Swift document type is the type both plists import", async () => {
+  const document = await repoFile("MDViewer/App/MarkdownDocument.swift");
+  const swiftType = firstCapture(/UTType\(importedAs: "([^"]+)"/, document, "the imported type");
+  for (const plist of [ios, macos]) {
+    assert.equal(plist.UTImportedTypeDeclarations[0].UTTypeIdentifier, swiftType);
+  }
+});
+
+test("the settings button's extension suffix matches the extension targets' bundle id", async () => {
+  const setup = await repoFile("MDViewer/App/SetupView.swift");
+  const project = await repoFile("MDViewer/MDViewer.xcodeproj/project.xcproj");
+  const suffix = firstCapture(/bundleIdentifier! \+ "([^"]+)"/, setup, "the extension suffix");
+  const ids = [...new Set([...project.matchAll(/"PRODUCT_BUNDLE_IDENTIFIER": "([^"]+)"/g)].map((match) => match[1]))];
+  const appId = ids.reduce((shortest, id) => (id.length < shortest.length ? id : shortest));
+  assert.deepEqual(ids.toSorted(), [appId, appId + suffix].toSorted());
+});
+
 test("only iOS opens documents in place, shows the document browser and declares a scene manifest", () => {
   assert.equal(ios.LSSupportsOpeningDocumentsInPlace, true);
   assert.equal(ios.UISupportsDocumentBrowser, true);
