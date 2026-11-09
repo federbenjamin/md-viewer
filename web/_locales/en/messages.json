@@ -1,4 +1,4 @@
 {
-  "extension_name": { "message": "MD Viewer" },
+  "extension_name": { "message": "__APP_DISPLAY_NAME__" },
   "extension_description": { "message": "Shows Markdown documents as formatted pages." }
 }
