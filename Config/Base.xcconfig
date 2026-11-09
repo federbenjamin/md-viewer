@@ -1,0 +1,6 @@
+APP_DISPLAY_NAME = MD Viewer
+BUNDLE_ID_PREFIX = com.example
+IPHONEOS_DEPLOYMENT_TARGET = 27.0
+MACOSX_DEPLOYMENT_TARGET = 26.0
+
+#include? "Local.xcconfig"
