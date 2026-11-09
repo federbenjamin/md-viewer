@@ -210,7 +210,8 @@ test("the placeholder survives sanitising: the rendered output already contains 
 });
 
 test("TeX containing markup characters is escaped text, never an element", () => {
-  const root = mathOf("Less-than $a<b$ and $$\n<img src=x onerror=alert(1)>\n$$");
+  // A block opens only at a line start, so the $$ sits in its own paragraph.
+  const root = mathOf("Less-than $a<b$ here\n\n$$\n<img src=x onerror=alert(1)>\n$$");
   assert.equal(root.querySelectorAll("img").length, 0);
   assert.equal(root.querySelector("span.math-inline")?.textContent, "a<b");
   assert.match(root.querySelector("div.math-block")?.textContent ?? "", /<img src=x onerror=alert\(1\)>/);
@@ -220,6 +221,13 @@ test("underscores inside math do not become emphasis", () => {
   const root = mathOf("$a_i$ text $b_j$");
   assert.equal(root.querySelectorAll("em, strong").length, 0);
   assert.deepEqual([...root.querySelectorAll(".math-inline")].map((n) => n.textContent), ["a_i", "b_j"]);
+});
+
+// Without the emStrongMask hook, the `*` inside the math closes the outer emphasis and splits the span.
+test("an asterisk inside math does not close emphasis opened outside it", () => {
+  const root = mathOf("*emph $a*b$ end*");
+  assert.deepEqual([...root.querySelectorAll(".math-inline")].map((n) => n.textContent), ["a*b"]);
+  assert.equal(root.querySelectorAll("em .math-inline").length, 1);
 });
 
 test("a longer math span with several underscores stays one placeholder", () => {
