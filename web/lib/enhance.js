@@ -36,14 +36,16 @@ export async function applyEnhancements(root, libs, { dark } = {}) {
     let index = 0;
     for (const code of root.querySelectorAll(MERMAID_TARGETS)) {
       const pre = code.parentElement;
+      const id = `mdviewer-mermaid-${index++}`;
       try {
-        const { svg } = await mermaid.render(`mdviewer-mermaid-${index++}`, code.textContent);
+        const { svg } = await mermaid.render(id, code.textContent);
         const diagram = root.ownerDocument.createElement("div");
         diagram.className = "mermaid";
         diagram.innerHTML = svg;
         pre.replaceWith(diagram);
       } catch {
-        // A diagram Mermaid rejects stays as its source.
+        // A diagram Mermaid rejects stays as its source. Mermaid throws with its error graphic left in `d<id>` on the body.
+        root.ownerDocument.getElementById(`d${id}`)?.remove();
       }
     }
   }

@@ -5,7 +5,7 @@ async function writeDocument(id, text) {
   await browser.storage.session.set({ [id]: { text, at: Date.now() } });
 }
 
-async function store(text, src) {
+async function store(text) {
   const id = crypto.randomUUID();
   const entries = await browser.storage.session.get(null);
   const stale = MDViewerSession.staleIds(entries, KEEP_BEFORE_WRITE);
@@ -25,7 +25,7 @@ browser.runtime.onMessage.addListener((message) => {
   if (message?.type !== "store") return undefined;
   const { text, src } = message;
   if (typeof text !== "string" || typeof src !== "string") return Promise.resolve({ error: "store-failed" });
-  return store(text, src).then(
+  return store(text).then(
     (id) => ({ url: browser.runtime.getURL("viewer/viewer.html") + MDViewerSession.viewerQuery(id, src) }),
     () => ({ error: "store-failed" }),
   );
