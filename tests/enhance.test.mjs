@@ -98,7 +98,8 @@ test("a \\href{javascript:...} in math yields no anchor", async () => {
   const { window, root } = rootFor('<span class="math math-inline">\\href{javascript:alert(1)}{click}</span>');
   await applyEnhancements(root, { katex, purify: DOMPurify(window) });
   assert.equal(root.querySelector("a"), null);
-  assert.ok(!root.innerHTML.includes("javascript:"));
+  // With trust unset KaTeX keeps the source only as inert annotation text (ran katex.renderToString); what matters is no live href.
+  assert.equal(root.querySelector("[href], [xlink\\:href]"), null);
 });
 
 test("a malformed formula does not throw because throwOnError is false", async () => {
