@@ -1,0 +1,48 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  background: Canvas;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+}
+
+#raw {
+  font: inherit;
+  padding: 4px 12px;
+}
+
+#raw[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.markdown-body {
+  box-sizing: border-box;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+#source {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.markdown-body .math-block {
+  overflow-x: auto;
+}
+
+.markdown-body .mermaid {
+  text-align: center;
+}

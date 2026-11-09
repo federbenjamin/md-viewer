@@ -3,5 +3,26 @@
   "name": "__MSG_extension_name__",
   "description": "__MSG_extension_description__",
   "version": "0.1.0",
-  "default_locale": "en"
+  "default_locale": "en",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["*://*/*.md", "*://*/*.markdown"],
+      "js": ["lib/detect.js", "content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "scripts": ["lib/session.js", "background.js"],
+    "persistent": false
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer/viewer.html"],
+      "matches": ["*://*/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' http: https:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"
+  }
 }

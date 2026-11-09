@@ -77,12 +77,50 @@
             {
               "path": "../../web/manifest.json",
               "target-membership": [
+                "MDViewer (iOS)/resources",
+                "MDViewer (macOS)/resources",
                 "MDViewer Extension (iOS)/resources",
                 "MDViewer Extension (macOS)/resources",
               ],
             }, {
               "path": "../../web/_locales",
               "target-membership": [
+                "MDViewer Extension (iOS)/resources",
+                "MDViewer Extension (macOS)/resources",
+              ],
+            }, {
+              "path": "../../web/content.js",
+              "target-membership": [
+                "MDViewer Extension (iOS)/resources",
+                "MDViewer Extension (macOS)/resources",
+              ],
+            }, {
+              "path": "../../web/background.js",
+              "target-membership": [
+                "MDViewer Extension (iOS)/resources",
+                "MDViewer Extension (macOS)/resources",
+              ],
+            }, {
+              "path": "../../web/viewer",
+              "target-membership": [
+                "MDViewer (iOS)/resources",
+                "MDViewer (macOS)/resources",
+                "MDViewer Extension (iOS)/resources",
+                "MDViewer Extension (macOS)/resources",
+              ],
+            }, {
+              "path": "../../web/lib",
+              "target-membership": [
+                "MDViewer (iOS)/resources",
+                "MDViewer (macOS)/resources",
+                "MDViewer Extension (iOS)/resources",
+                "MDViewer Extension (macOS)/resources",
+              ],
+            }, {
+              "path": "../../web/vendor",
+              "target-membership": [
+                "MDViewer (iOS)/resources",
+                "MDViewer (macOS)/resources",
                 "MDViewer Extension (iOS)/resources",
                 "MDViewer Extension (macOS)/resources",
               ],
