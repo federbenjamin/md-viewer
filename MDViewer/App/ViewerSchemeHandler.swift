@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import WebKit
 
 final class ViewerSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -6,6 +7,8 @@ final class ViewerSchemeHandler: NSObject, WKURLSchemeHandler {
     static let viewerURL = URL(string: "mdviewer://app/viewer/viewer.html")!
 
     private static let servedFolders: Set<String> = ["viewer", "lib", "vendor"]
+    private static let plainText = "text/plain; charset=utf-8"
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "scheme-handler")
 
     // The extension's policy is the one source, so the two hosts cannot drift apart.
     private static let contentSecurityPolicy: String = {
@@ -34,22 +37,31 @@ final class ViewerSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         let path = url.path(percentEncoded: false)
         if path == "/document" {
-            send(
-                Data(text.utf8),
-                contentType: "text/plain; charset=utf-8",
-                headers: ["X-Content-Type-Options": "nosniff"],
-                for: url,
-                to: urlSchemeTask
-            )
-        } else if let file = bundledFile(at: path), let body = try? Data(contentsOf: file) {
-            send(body, contentType: Self.mimeType(of: file), for: url, to: urlSchemeTask)
+            send(Data(text.utf8), contentType: Self.plainText, for: url, to: urlSchemeTask)
+        } else if let file = bundledFile(at: path) {
+            sendBundledFile(file, path: path, for: url, to: urlSchemeTask)
         } else {
-            send(Data(), status: 404, contentType: "text/plain; charset=utf-8", for: url, to: urlSchemeTask)
+            send(Data(), status: 404, contentType: Self.plainText, for: url, to: urlSchemeTask)
         }
     }
 
     // Every response is finished inside start, so no task is ever in flight to stop.
     func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {}
+
+    private func sendBundledFile(_ file: URL, path: String, for url: URL, to task: any WKURLSchemeTask) {
+        do {
+            send(try Data(contentsOf: file), contentType: Self.mimeType(of: file), for: url, to: task)
+        } catch {
+            let status = ViewerPolicy.status(forReadError: error)
+            // A missing file's path can come from the document, so only a file known to be bundled logs in the clear.
+            if status == 404 {
+                Self.logger.error("Bundled file is missing: \(path)")
+            } else {
+                Self.logger.error("Bundled file is unreadable: \(path, privacy: .public)")
+            }
+            send(Data(), status: status, contentType: Self.plainText, for: url, to: task)
+        }
+    }
 
     private func bundledFile(at path: String) -> URL? {
         guard
@@ -78,13 +90,14 @@ final class ViewerSchemeHandler: NSObject, WKURLSchemeHandler {
         _ body: Data,
         status: Int = 200,
         contentType: String,
-        headers: [String: String] = [:],
         for url: URL,
         to task: any WKURLSchemeTask
     ) {
-        var fields = headers
-        fields["Content-Type"] = contentType
-        fields["Content-Security-Policy"] = Self.contentSecurityPolicy
+        let fields = [
+            "Content-Type": contentType,
+            "Content-Security-Policy": Self.contentSecurityPolicy,
+            "X-Content-Type-Options": "nosniff",
+        ]
         guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: fields) else {
             task.didFailWithError(URLError(.badServerResponse))
             return

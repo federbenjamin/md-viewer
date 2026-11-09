@@ -38,6 +38,7 @@
         { "path": "MarkdownDocument.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
         { "path": "DocumentView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
         { "path": "ViewerSchemeHandler.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "ViewerPolicy.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
         { "path": "WelcomeView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
         { "path": "SetupView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
         { "path": "BundledMarkdownView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
