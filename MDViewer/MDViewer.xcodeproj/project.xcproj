@@ -19,56 +19,38 @@
     {
       "path": "../Config/Base.xcconfig",
     }, {
+      "path": "../THIRD_PARTY_NOTICES.md",
+      "target-membership": [
+        "MDViewer (iOS)/resources",
+        "MDViewer (macOS)/resources",
+      ],
+    }, {
+      "path": "../PRIVACY.md",
+      "target-membership": [
+        "MDViewer (iOS)/resources",
+        "MDViewer (macOS)/resources",
+      ],
+    }, {
+      "kind": "group",
+      "path": "App",
+      "children": [
+        { "path": "MDViewerApp.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "MarkdownDocument.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "DocumentView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "ViewerSchemeHandler.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "WelcomeView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "SetupView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+        { "path": "BundledMarkdownView.swift", "target-membership": [ "MDViewer (iOS)/compile-sources", "MDViewer (macOS)/compile-sources" ] },
+      ],
+    }, {
       "kind": "group",
       "path": "Shared (App)",
       "children": [
         {
-          "path": "ViewController.swift",
-          "target-membership": [
-            "MDViewer (iOS)/compile-sources",
-            "MDViewer (macOS)/compile-sources",
-          ],
-        }, {
           "path": "Assets.xcassets",
           "target-membership": [
             "MDViewer (iOS)/resources",
             "MDViewer (macOS)/resources",
-          ],
-        }, {
-          "kind": "group",
-          "path": "Resources",
-          "children": [
-            {
-              "kind": "variant-group",
-              "name": "Main.html",
-              "target-membership": [
-                "MDViewer (iOS)/resources",
-                "MDViewer (macOS)/resources",
-              ],
-              "children": [
-                {
-                  "path": "Base.lproj/Main.html",
-                },
-              ],
-            }, {
-              "path": "Icon.png",
-              "target-membership": [
-                "MDViewer (iOS)/resources",
-                "MDViewer (macOS)/resources",
-              ],
-            }, {
-              "path": "Style.css",
-              "target-membership": [
-                "MDViewer (iOS)/resources",
-                "MDViewer (macOS)/resources",
-              ],
-            }, {
-              "path": "Script.js",
-              "target-membership": [
-                "MDViewer (iOS)/resources",
-                "MDViewer (macOS)/resources",
-              ],
-            },
           ],
         },
       ],
@@ -139,50 +121,12 @@
       "kind": "group",
       "path": "iOS (App)",
       "children": [
-        { "path": "AppDelegate.swift", "target-membership": [ "MDViewer (iOS)/compile-sources" ] },
-        { "path": "SceneDelegate.swift", "target-membership": [ "MDViewer (iOS)/compile-sources" ] },
-        {
-          "kind": "variant-group",
-          "name": "LaunchScreen.storyboard",
-          "target-membership": [
-            "MDViewer (iOS)/resources",
-          ],
-          "children": [
-            {
-              "path": "Base.lproj/LaunchScreen.storyboard",
-            },
-          ],
-        }, {
-          "kind": "variant-group",
-          "name": "Main.storyboard",
-          "target-membership": [
-            "MDViewer (iOS)/resources",
-          ],
-          "children": [
-            {
-              "path": "Base.lproj/Main.storyboard",
-            },
-          ],
-        },
         { "path": "Info.plist" },
       ],
     }, {
       "kind": "group",
       "path": "macOS (App)",
       "children": [
-        { "path": "AppDelegate.swift", "target-membership": [ "MDViewer (macOS)/compile-sources" ] },
-        {
-          "kind": "variant-group",
-          "name": "Main.storyboard",
-          "target-membership": [
-            "MDViewer (macOS)/resources",
-          ],
-          "children": [
-            {
-              "path": "Base.lproj/Main.storyboard",
-            },
-          ],
-        },
         { "path": "Info.plist" },
       ],
     }, {
@@ -236,8 +180,7 @@
         "INFOPLIST_FILE": "iOS (App)/Info.plist",
         "INFOPLIST_KEY_CFBundleDisplayName": "$(APP_DISPLAY_NAME)",
         "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
-        "INFOPLIST_KEY_UILaunchStoryboardName": "LaunchScreen",
-        "INFOPLIST_KEY_UIMainStoryboardFile": "Main",
+        "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations": "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight",
         "LD_RUNPATH_SEARCH_PATHS": [
@@ -293,7 +236,6 @@
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "macOS (App)/Info.plist",
         "INFOPLIST_KEY_CFBundleDisplayName": "$(APP_DISPLAY_NAME)",
-        "INFOPLIST_KEY_NSMainStoryboardFile": "Main",
         "INFOPLIST_KEY_NSPrincipalClass": "NSApplication",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
