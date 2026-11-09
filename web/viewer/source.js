@@ -3,9 +3,8 @@ import "../lib/session.js";
 async function loadFromExtension() {
   const { id, src } = globalThis.MDViewerSession.readViewerQuery(location.search);
   if (id === null) return { missing: true, src };
-  const stored = await browser.storage.session.get(id);
-  const text = stored?.[id]?.text;
-  return typeof text === "string" ? { text, src } : { missing: true, src };
+  const text = await globalThis.MDViewerSession.readDocument(browser.storage.session, id);
+  return text === null ? { missing: true, src } : { text, src };
 }
 
 async function loadFromApp() {

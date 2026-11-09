@@ -1,15 +1,179 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 // session.js is a classic script: importing it runs it and publishes the global.
 await import("../web/lib/session.js");
-const { viewerQuery, readViewerQuery, staleIds } = globalThis.MDViewerSession;
+const { viewerQuery, readViewerQuery, staleIds, storeDocument, readDocument, claimRedirect, settleRedirect } =
+  globalThis.MDViewerSession;
 
 const ID = "3f2b8c1e-5a4d-4e0b-9c7a-1d2e3f4a5b6c";
 
 test("the session API is published as a frozen global", () => {
   assert.ok(Object.isFrozen(globalThis.MDViewerSession));
-  assert.deepEqual(Object.keys(globalThis.MDViewerSession).sort(), ["readViewerQuery", "staleIds", "viewerQuery"]);
+  assert.deepEqual(Object.keys(globalThis.MDViewerSession).sort(), [
+    "claimRedirect",
+    "readDocument",
+    "readViewerQuery",
+    "settleRedirect",
+    "staleIds",
+    "storeDocument",
+    "viewerQuery",
+  ]);
+});
+
+const quotaError = () => Object.assign(new Error("exceeded storage quota"), { name: "Error" });
+
+// In-memory storage.session; `failSets` holds what each successive set() throws (undefined means it succeeds).
+function memoryStorage(initial = {}, failSets = []) {
+  const data = { ...initial };
+  const calls = { removed: [], sets: 0 };
+  return {
+    data,
+    calls,
+    async get(key) {
+      if (key === null) return { ...data };
+      return key in data ? { [key]: data[key] } : {};
+    },
+    async set(record) {
+      const failure = failSets[calls.sets++];
+      if (failure) throw failure;
+      Object.assign(data, record);
+    },
+    async remove(ids) {
+      calls.removed.push(...ids);
+      for (const id of ids) delete data[id];
+    },
+  };
+}
+
+test("storeDocument writes the record under a fresh id and readDocument returns its text", async () => {
+  const storage = memoryStorage();
+  const { id } = await storeDocument(storage, "# hello");
+  assert.deepEqual(Object.keys(storage.data), [id]);
+  assert.equal(typeof storage.data[id].at, "number");
+  assert.equal(await readDocument(storage, id), "# hello");
+});
+
+test("storeDocument evicts down to 19 before writing, so 20 documents remain", async () => {
+  const initial = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`e${i}`, { text: "t", at: i + 1 }]));
+  const storage = memoryStorage(initial);
+  const { id } = await storeDocument(storage, "new");
+  assert.equal(Object.keys(storage.data).length, 20);
+  assert.ok(id in storage.data);
+  assert.equal(storage.data.e0, undefined);
+  assert.ok(storage.data.e24);
+});
+
+test("a first write that fails on quota clears the other documents and retries once", async () => {
+  const storage = memoryStorage({ a: { text: "a", at: 1 }, b: { text: "b", at: 2 } }, [quotaError()]);
+  const result = await storeDocument(storage, "big");
+  assert.ok(result.id);
+  assert.deepEqual(Object.keys(storage.data), [result.id]);
+  assert.equal(storage.calls.sets, 2);
+});
+
+test("a QuotaExceededError by name is recognised whatever its message", async () => {
+  const error = Object.assign(new Error("nope"), { name: "QuotaExceededError" });
+  const storage = memoryStorage({ a: { text: "a", at: 1 } }, [error]);
+  assert.ok((await storeDocument(storage, "big")).id);
+  assert.deepEqual(storage.calls.removed, ["a"]);
+});
+
+test("a retry that also hits quota reports quota and writes nothing more", async () => {
+  const storage = memoryStorage({ a: { text: "a", at: 1 } }, [quotaError(), quotaError()]);
+  assert.deepEqual(await storeDocument(storage, "big"), { reason: "quota", errorName: "Error" });
+  assert.equal(storage.calls.sets, 2);
+});
+
+test("a write failure that is not quota wipes nothing and does not retry", async () => {
+  const storage = memoryStorage({ a: { text: "a", at: 1 } }, [new TypeError("could not clone")]);
+  assert.deepEqual(await storeDocument(storage, "x"), { reason: "unavailable", errorName: "TypeError" });
+  assert.deepEqual(storage.calls.removed, []);
+  assert.equal(storage.calls.sets, 1);
+  assert.ok(storage.data.a);
+});
+
+test("a storage read that rejects resolves to unavailable and writes nothing", async () => {
+  const storage = memoryStorage();
+  storage.get = async () => {
+    throw new TypeError("no storage");
+  };
+  assert.deepEqual(await storeDocument(storage, "x"), { reason: "unavailable", errorName: "TypeError" });
+  assert.equal(storage.calls.sets, 0);
+});
+
+test("readDocument tells an empty document from an absent or malformed entry", async () => {
+  const storage = memoryStorage({ empty: { text: "", at: 1 }, noText: { at: 1 }, wrong: { text: 5, at: 1 } });
+  assert.equal(await readDocument(storage, "empty"), "");
+  assert.equal(await readDocument(storage, "absent"), null);
+  assert.equal(await readDocument(storage, "noText"), null);
+  assert.equal(await readDocument(storage, "wrong"), null);
+});
+
+test("a read that rejects is not reported as a missing document", async () => {
+  const storage = memoryStorage();
+  storage.get = async () => {
+    throw new Error("broken");
+  };
+  await assert.rejects(readDocument(storage, "x"));
+});
+
+for (const file of ["web/background.js", "web/content.js", "web/viewer/source.js", "web/viewer/viewer.js", "web/viewer/assets.js"]) {
+  test(`${file} never touches storage.session's methods: session.js owns the stored record`, async () => {
+    const code = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.doesNotMatch(code, /storage\.session\.(get|set|remove)\b/);
+  });
+}
+
+function tabWindow() {
+  const items = new Map();
+  return {
+    items,
+    sessionStorage: {
+      getItem: (key) => (items.has(key) ? items.get(key) : null),
+      setItem: (key, value) => void items.set(key, value),
+      removeItem: (key) => void items.delete(key),
+    },
+  };
+}
+
+const PAGE = "https://h.example/a.md";
+
+test("claimRedirect allows one hop per src, then refuses, then allows a fresh try", () => {
+  const window = tabWindow();
+  assert.equal(claimRedirect(window, PAGE), true);
+  assert.equal(claimRedirect(window, PAGE), false);
+  assert.equal(window.items.size, 0);
+  assert.equal(claimRedirect(window, PAGE), true);
+});
+
+test("claimRedirect keeps a separate allowance for each src", () => {
+  const window = tabWindow();
+  assert.equal(claimRedirect(window, PAGE), true);
+  assert.equal(claimRedirect(window, "https://h.example/b.md"), true);
+});
+
+test("settleRedirect clears the claim, so a later miss may hop again", () => {
+  const window = tabWindow();
+  claimRedirect(window, PAGE);
+  settleRedirect(window, PAGE);
+  assert.equal(claimRedirect(window, PAGE), true);
+});
+
+test("claimRedirect refuses when session storage cannot be used, so the hop cannot loop", () => {
+  const throwing = {
+    get sessionStorage() {
+      throw new Error("denied");
+    },
+  };
+  assert.equal(claimRedirect(throwing, PAGE), false);
+  assert.doesNotThrow(() => settleRedirect(throwing, PAGE));
+  const fullStorage = tabWindow();
+  fullStorage.sessionStorage.setItem = () => {
+    throw new Error("full");
+  };
+  assert.equal(claimRedirect(fullStorage, PAGE), false);
 });
 
 test("viewerQuery encodes id and src so the src's own ? & # cannot leak into the viewer's query", () => {

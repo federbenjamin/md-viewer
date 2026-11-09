@@ -1,70 +1,23 @@
 import DOMPurify from "../vendor/purify.es.mjs";
+import "../lib/session.js";
 import { applyEnhancements, enhancementsFor } from "../lib/enhance.js";
+import { errorClass } from "../lib/report.js";
 import { createRenderer } from "../lib/render.js";
+import { documentTitle } from "../lib/title.js";
 import { rewriteUrls } from "../lib/urls.js";
+import { loadLibraries } from "./assets.js";
 import { loadSource } from "./source.js";
 
 const UNAVAILABLE = "This document is no longer available.";
+const RENDER_FAILED = "This document could not be displayed. The Raw button shows its source.";
 
 const content = document.getElementById("content");
 const rawButton = document.getElementById("raw");
 rawButton.disabled = true;
 
-function loadScript(path) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = path;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error(`failed to load ${path}`)), { once: true });
-    document.head.append(script);
-  });
-}
-
-function loadStyle(path, media) {
-  return new Promise((resolve, reject) => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = path;
-    if (media) link.media = media;
-    link.addEventListener("load", () => resolve(), { once: true });
-    link.addEventListener("error", () => reject(new Error(`failed to load ${path}`)), { once: true });
-    document.head.append(link);
-  });
-}
-
-function loadLibraries({ highlight, math, mermaid }) {
-  const loads = [];
-  if (highlight) {
-    loads.push(
-      loadScript("../vendor/highlight.min.js"),
-      loadStyle("../vendor/hljs-github.min.css"),
-      loadStyle("../vendor/hljs-github-dark.min.css", "(prefers-color-scheme: dark)"),
-    );
-  }
-  if (math) loads.push(loadScript("../vendor/katex.min.js"), loadStyle("../vendor/katex.min.css"));
-  if (mermaid) loads.push(loadScript("../vendor/mermaid.min.js"));
-  return Promise.allSettled(loads);
-}
-
-function lastPathSegment(src) {
-  if (src === null) return null;
-  const segment = new URL(src).pathname.split("/").filter(Boolean).pop();
-  if (!segment) return null;
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
-  }
-}
-
-function setTitle(src) {
-  const heading = content.querySelector("h1")?.textContent.trim();
-  document.title = heading || lastPathSegment(src) || "Markdown";
-}
-
-function showUnavailable() {
+function showMessage(text) {
   const message = document.createElement("p");
-  message.textContent = UNAVAILABLE;
+  message.textContent = text;
   content.replaceChildren(message);
 }
 
@@ -87,41 +40,52 @@ function enableRawToggle(text) {
   rawButton.disabled = false;
 }
 
-async function main() {
-  let source;
-  try {
-    source = await loadSource();
-  } catch {
-    showUnavailable();
-    return;
-  }
+function handleMissing(src) {
+  // Back on the page itself, the content script stores the text afresh; the viewer never fetches src.
+  if (src !== null && globalThis.MDViewerSession.claimRedirect(window, src)) location.replace(src);
+  else showMessage(UNAVAILABLE);
+}
 
-  if (source.missing) {
-    // Back on the page itself, the content script stores the text afresh; the viewer never fetches src.
-    if (source.src !== null) location.replace(source.src);
-    else showUnavailable();
-    return;
-  }
-
-  const { text, src } = source;
+async function renderDocument({ text, src }) {
+  if (src !== null) globalThis.MDViewerSession.settleRedirect(window, src);
   content.innerHTML = createRenderer(window).render(text);
   rewriteUrls(content, { src });
-  setTitle(src);
+  document.title = documentTitle(content, src);
 
   const wanted = enhancementsFor(content);
   if (wanted.highlight || wanted.math || wanted.mermaid) {
     await loadLibraries(wanted);
-    try {
-      await applyEnhancements(
-        content,
-        { hljs: window.hljs, katex: window.katex, mermaid: window.mermaid, purify: DOMPurify(window) },
-        { dark: matchMedia("(prefers-color-scheme: dark)").matches },
-      );
-    } catch {
-      // The sanitised rendering stays as it is.
-    }
+    await applyEnhancements(
+      content,
+      { hljs: window.hljs, katex: window.katex, mermaid: window.mermaid, purify: DOMPurify(window) },
+      { dark: matchMedia("(prefers-color-scheme: dark)").matches },
+    );
   }
   enableRawToggle(text);
+}
+
+async function main() {
+  let source;
+  try {
+    source = await loadSource();
+  } catch (error) {
+    console.error("mdviewer: reading the document failed:", errorClass(error));
+    showMessage(UNAVAILABLE);
+    return;
+  }
+
+  try {
+    if (source.missing) handleMissing(source.src);
+    else await renderDocument(source);
+  } catch (error) {
+    console.error("mdviewer: rendering failed:", errorClass(error));
+    if (source.missing) {
+      showMessage(UNAVAILABLE);
+    } else {
+      showMessage(RENDER_FAILED);
+      enableRawToggle(source.text);
+    }
+  }
 }
 
 main();

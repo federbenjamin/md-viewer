@@ -98,8 +98,12 @@ test("a \\href{javascript:...} in math yields no anchor", async () => {
   const { window, root } = rootFor('<span class="math math-inline">\\href{javascript:alert(1)}{click}</span>');
   await applyEnhancements(root, { katex, purify: DOMPurify(window) });
   assert.equal(root.querySelector("a"), null);
-  // With trust unset KaTeX keeps the source only as inert annotation text (ran katex.renderToString); what matters is no live href.
-  assert.equal(root.querySelector("[href], [xlink\\:href]"), null);
+  // With trust unset KaTeX keeps the source only as inert annotation text, so the check is on attributes, not on the markup's text.
+  const liveUrls = [...root.querySelectorAll("*")]
+    .flatMap((el) => [...el.attributes])
+    .filter((attr) => /^\s*javascript:/i.test(attr.value))
+    .map((attr) => attr.name);
+  assert.deepEqual(liveUrls, []);
 });
 
 test("a malformed formula does not throw because throwOnError is false", async () => {
@@ -241,6 +245,161 @@ test("a rejected (async) render also leaves the pre in place", async () => {
   await assert.doesNotReject(applyEnhancements(root, { mermaid }));
   assert.ok(root.querySelector("pre"));
   assert.equal(root.querySelector("div.mermaid"), null);
+});
+
+test("a rejected diagram's error graphic is removed from the body", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const { window, root } = rootFor('<pre><code class="language-mermaid">bad</code></pre>');
+  let leftoverId;
+  const mermaid = fakeMermaid((id) => {
+    leftoverId = `d${id}`;
+    const leftover = window.document.createElement("div");
+    leftover.id = leftoverId;
+    window.document.body.append(leftover);
+    throw new Error("parse error");
+  });
+  await applyEnhancements(root, { mermaid });
+  assert.ok(leftoverId);
+  assert.equal(window.document.getElementById(leftoverId), null);
+  assert.ok(root.querySelector("pre"));
+});
+
+test("a DOM failure after a successful render is not reported as a rejected diagram", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { root } = rootFor(
+    '<pre><code class="language-mermaid">a</code></pre><pre><code class="language-mermaid">b</code></pre>',
+  );
+  root.querySelector("pre").replaceWith = () => {
+    throw new RangeError("dom");
+  };
+  await applyEnhancements(root, { mermaid: fakeMermaid() });
+  assert.deepEqual(warnings(warn), ["mdviewer: mermaid output failed: RangeError"]);
+  assert.equal(root.querySelectorAll("div.mermaid").length, 1);
+});
+
+// ---- applyEnhancements: isolation and reporting ----
+
+function warnings(mock) {
+  return mock.mock.calls.map((call) => call.arguments.join(" "));
+}
+
+const SECRET = "text from the document";
+const throwing = (ErrorClass = TypeError) => {
+  throw new ErrorClass(SECRET);
+};
+
+test("one highlight failure skips neither the other blocks nor math nor diagrams", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { window, root } = rootFor(
+    '<pre><code class="language-js">bad</code></pre><pre><code class="language-js">good</code></pre>' +
+      '<span class="math math-inline">x</span><pre><code class="language-mermaid">d</code></pre>',
+  );
+  const done = [];
+  const hljs = {
+    highlightElement(el) {
+      if (el.textContent === "bad") throwing();
+      done.push(el.textContent);
+    },
+  };
+  const mermaid = fakeMermaid();
+  await applyEnhancements(root, { hljs, katex, purify: DOMPurify(window), mermaid });
+  assert.deepEqual(done, ["good"]);
+  assert.ok(root.querySelector(".math .katex"));
+  assert.equal(mermaid.renders.length, 1);
+  assert.deepEqual(warnings(warn), ["mdviewer: highlight.js failed: TypeError"]);
+});
+
+test("one formula that throws leaves the other formulas and the diagrams rendered", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { root } = rootFor(
+    '<span class="math math-inline">bad</span><span class="math math-inline">good</span>' +
+      '<pre><code class="language-mermaid">d</code></pre>',
+  );
+  const fakeKatex = {
+    renderToString(tex) {
+      if (tex === "bad") throwing(RangeError);
+      return `<b>${tex}</b>`;
+    },
+  };
+  const mermaid = fakeMermaid();
+  await applyEnhancements(root, { katex: fakeKatex, purify: { sanitize: (html) => html }, mermaid });
+  const [bad, good] = root.querySelectorAll(".math");
+  assert.equal(bad.innerHTML, "bad");
+  assert.equal(good.innerHTML, "<b>good</b>");
+  assert.equal(mermaid.renders.length, 1);
+  assert.deepEqual(warnings(warn), ["mdviewer: katex failed: RangeError"]);
+});
+
+test("a purify throw is isolated to its formula", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { root } = rootFor('<span class="math math-inline">a</span><span class="math math-inline">b</span>');
+  let calls = 0;
+  const purify = {
+    sanitize(html) {
+      if (++calls === 1) throwing();
+      return html;
+    },
+  };
+  await applyEnhancements(root, { katex: { renderToString: (tex) => tex }, purify });
+  assert.equal(calls, 2);
+  assert.equal(warnings(warn).length, 1);
+});
+
+test("a mermaid.initialize throw is reported once and math has already run", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { window, root } = rootFor(
+    '<span class="math math-inline">x</span><pre><code class="language-mermaid">d</code></pre>',
+  );
+  const mermaid = fakeMermaid();
+  mermaid.initialize = () => throwing();
+  await assert.doesNotReject(applyEnhancements(root, { katex, purify: DOMPurify(window), mermaid }));
+  assert.equal(mermaid.renders.length, 0);
+  assert.ok(root.querySelector(".math .katex"));
+  assert.ok(root.querySelector("pre"));
+  assert.deepEqual(warnings(warn), ["mdviewer: mermaid failed: TypeError"]);
+});
+
+test("a rejected diagram is reported by class and the next diagram still renders", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { root } = rootFor(
+    '<pre><code class="language-mermaid">bad</code></pre><pre><code class="language-mermaid">good</code></pre>',
+  );
+  const mermaid = fakeMermaid((id, text) => {
+    if (text === "bad") throwing(SyntaxError);
+    return { svg: "<svg></svg>" };
+  });
+  await applyEnhancements(root, { mermaid });
+  assert.equal(root.querySelectorAll("div.mermaid").length, 1);
+  assert.deepEqual(warnings(warn), ["mdviewer: mermaid failed: SyntaxError"]);
+});
+
+test("reports never carry the error's message, and a thrown non-error names no text", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const { root } = rootFor(
+    '<pre><code class="language-js">a</code></pre><pre><code class="language-js">b</code></pre>',
+  );
+  let first = true;
+  const hljs = {
+    highlightElement() {
+      if (first) {
+        first = false;
+        throwing();
+      }
+      throw SECRET;
+    },
+  };
+  await applyEnhancements(root, { hljs });
+  const lines = warnings(warn);
+  assert.deepEqual(lines, ["mdviewer: highlight.js failed: TypeError", "mdviewer: highlight.js failed: unknown"]);
+  assert.ok(lines.every((line) => !line.includes(SECRET)));
+});
+
+test("a document asks for a library only when applying it has a target", async () => {
+  const { root } = rootFor('<p><code class="language-mermaid">inline</code></p>');
+  assert.equal(enhancementsFor(root).mermaid, false);
+  const mermaid = fakeMermaid();
+  await applyEnhancements(root, { mermaid });
+  assert.equal(mermaid.renders.length, 0);
 });
 
 test("without libs.mermaid the fence is left untouched", async () => {
