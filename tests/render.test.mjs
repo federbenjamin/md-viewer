@@ -187,6 +187,13 @@ test("PURIFY_CONFIG forbids style, uses the html profile and carries the URI all
 // Math
 
 const mathOf = (md) => dom(renderer.render(md));
+const mathTexts = (root) => [...root.querySelectorAll(".math")].map((n) => n.textContent);
+
+function textOutsideMath(root) {
+  const copy = root.cloneNode(true);
+  for (const placeholder of copy.querySelectorAll(".math")) placeholder.remove();
+  return copy.textContent;
+}
 
 test("inline math becomes a math-inline span holding the TeX source", () => {
   const root = mathOf("Inline $E=mc^2$ here.");
@@ -215,6 +222,91 @@ test("TeX containing markup characters is escaped text, never an element", () =>
   assert.equal(root.querySelectorAll("img").length, 0);
   assert.equal(root.querySelector("span.math-inline")?.textContent, "a<b");
   assert.match(root.querySelector("div.math-block")?.textContent ?? "", /<img src=x onerror=alert\(1\)>/);
+});
+
+test("markup inside a mid-line $$ span is escaped text, never an element", () => {
+  const root = mathOf("Less-than $a<b$ and $$\n<img src=x onerror=alert(1)>\n$$");
+  assert.equal(root.querySelectorAll("img").length, 0);
+  assert.deepEqual(mathTexts(root), ["a<b", "<img src=x onerror=alert(1)>"]);
+  assert.doesNotMatch(textOutsideMath(root), /\$/);
+});
+
+for (const input of ["a $$x$$ b", "The formula $$x$$ is famous.", "$$x$$ opens the paragraph", "# Title $$x$$"]) {
+  test(`${input}: one placeholder and no dollar outside it`, () => {
+    const root = mathOf(input);
+    assert.deepEqual(mathTexts(root), ["x"]);
+    assert.doesNotMatch(textOutsideMath(root), /\$/);
+  });
+}
+
+test("spaces at the edges of a mid-paragraph $$ span are not part of the TeX", () => {
+  const root = mathOf("a $$ x + y $$ b");
+  assert.deepEqual(mathTexts(root), ["x + y"]);
+  assert.doesNotMatch(textOutsideMath(root), /\$/);
+});
+
+test("a mid-paragraph $$ span may cross a line break", () => {
+  const root = mathOf("a $$x\ny$$ b");
+  assert.deepEqual(mathTexts(root), ["x\ny"]);
+  assert.doesNotMatch(textOutsideMath(root), /\$/);
+});
+
+test("a lone dollar inside a mid-paragraph $$ span stays in the TeX", () => {
+  const root = mathOf("a $$ \\text{$x$} $$ b");
+  assert.deepEqual(mathTexts(root), ["\\text{$x$}"]);
+  assert.doesNotMatch(textOutsideMath(root), /\$/);
+});
+
+test("an escaped $$ does not close a mid-paragraph $$ span", () => {
+  const root = mathOf("a $$ x \\$$ y $$ b");
+  assert.deepEqual(mathTexts(root), ["x \\$$ y"]);
+  assert.doesNotMatch(textOutsideMath(root), /\$/);
+});
+
+test("two $$ spans in one paragraph stay two placeholders with no emphasis", () => {
+  const root = mathOf("a $$a_b$$ and $$c_d$$ b");
+  assert.deepEqual(mathTexts(root), ["a_b", "c_d"]);
+  assert.equal(root.querySelectorAll("em").length, 0);
+});
+
+test("an asterisk inside a spaced $$ span does not close emphasis opened outside it", () => {
+  const root = mathOf("*em $$ x*y $$ end*");
+  assert.deepEqual(mathTexts(root), ["x*y"]);
+  assert.equal(root.querySelectorAll("em .math-inline").length, 1);
+});
+
+test("a $$ span that opens a paragraph does not reach a later paragraph's $$", () => {
+  const root = mathOf("$$x$$ and more\n\n$$y$$");
+  assert.deepEqual(mathTexts(root), ["x", "y"]);
+  assert.equal(root.querySelector("span.math-inline")?.textContent, "x");
+  assert.equal(root.querySelector("div.math-block")?.textContent, "y");
+});
+
+test("$$ alone on its line stays a block placeholder", () => {
+  const root = mathOf("$$x$$");
+  assert.equal(root.querySelector("div.math-block")?.textContent, "x");
+  assert.equal(root.querySelectorAll(".math-inline").length, 0);
+});
+
+test("$$ with nothing but space inside is prose", () => {
+  assert.equal(mathOf("a $$ $$ b").querySelectorAll(".math").length, 0);
+  assert.equal(mathOf("a $$$$ b").querySelectorAll(".math").length, 0);
+});
+
+test("an unclosed $$ is prose", () => {
+  const root = mathOf("a $$x b");
+  assert.equal(root.querySelectorAll(".math").length, 0);
+  assert.match(root.textContent, /\$\$x b/);
+});
+
+test("a $$ span never reaches into a code span", () => {
+  const root = mathOf("a $$b `c$$d` e");
+  assert.equal(root.querySelectorAll(".math").length, 0);
+  assert.equal(root.querySelector("code")?.textContent, "c$$d");
+});
+
+test("doubled currency text stays prose", () => {
+  assert.equal(mathOf("$$5 and $$10").querySelectorAll(".math").length, 0);
 });
 
 test("underscores inside math do not become emphasis", () => {
