@@ -5,7 +5,8 @@ A very thin Markdown viewer for Safari on iPhone, iPad, and Mac: a Safari Web Ex
 ## Project state
 
 - 2026-11-09: not launched — nothing is released and the App Store listing does not exist. Retires at the first public release.
-- 2026-11-09: no user data; the extension and app store nothing beyond the current document on the user's device. Retires if either ever sends data off the device.
+- 2026-11-09: no user data leaves the device. The extension keeps up to the 20 most recently opened documents in `storage.session`, and the app holds only the open document. Retires if either ever stores a document anywhere else.
+- 2026-11-09: the viewer loads the remote images a document names, in the extension and the app, so each image request reaches that site; nothing else is sent off the device. Retires if anything else ever is.
 
 ## Conventions
 
