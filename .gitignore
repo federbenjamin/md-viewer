@@ -1,1 +1,7 @@
 /.claude/
+/Config/Local.xcconfig
+/node_modules/
+/build/
+/DerivedData/
+xcuserdata/
+.DS_Store
