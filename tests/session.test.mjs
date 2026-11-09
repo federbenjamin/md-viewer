@@ -59,6 +59,12 @@ test("readViewerQuery gives src null when src is missing, and id null when id is
   });
 });
 
+// Observed behavior, not in the brief: an empty id counts as absent, so the viewer reports
+// "missing" instead of reading storage with an empty key.
+test("readViewerQuery treats an empty id value as no id", () => {
+  assert.equal(readViewerQuery("?id=&src=").id, null);
+});
+
 test("readViewerQuery on an empty search returns both null", () => {
   assert.deepEqual(readViewerQuery(""), { id: null, src: null });
   assert.deepEqual(readViewerQuery("?"), { id: null, src: null });
