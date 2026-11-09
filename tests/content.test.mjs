@@ -38,10 +38,10 @@ test("a reply with a url navigates there and warns of nothing", async (t) => {
   assert.equal(warn.mock.calls.length, 0);
 });
 
-for (const reason of ["quota", "unavailable"]) {
+for (const reason of ["invalid", "quota", "unavailable"]) {
   test(`a ${reason} failure logs the reason and leaves the raw page`, async (t) => {
     const warn = t.mock.method(console, "warn", () => {});
-    const { replaced } = await runContent(async () => ({ error: "store-failed", reason }));
+    const { replaced } = await runContent(async () => ({ reason }));
     assert.deepEqual(replaced, []);
     assert.deepEqual(
       warn.mock.calls.map((call) => call.arguments),

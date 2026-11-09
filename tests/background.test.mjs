@@ -53,8 +53,8 @@ test("a message that is not a store request gets no reply", async () => {
 test("a store request with a missing text or src replies invalid and writes nothing", async () => {
   const storage = storageWith({});
   const listener = await loadListener(storage);
-  assert.deepEqual(await listener({ type: "store", text: 5, src: SRC }), { error: "store-failed", reason: "invalid" });
-  assert.deepEqual(await listener({ type: "store", text: "x" }), { error: "store-failed", reason: "invalid" });
+  assert.deepEqual(await listener({ type: "store", text: 5, src: SRC }), { reason: "invalid" });
+  assert.deepEqual(await listener({ type: "store", text: "x" }), { reason: "invalid" });
   assert.deepEqual(storage.data, {});
 });
 
@@ -65,7 +65,7 @@ test("a non-quota write failure keeps the other documents, replies unavailable a
     throw new TypeError("fragment of the document");
   });
   const listener = await loadListener(storage);
-  assert.deepEqual(await listener(STORE), { error: "store-failed", reason: "unavailable" });
+  assert.deepEqual(await listener(STORE), { reason: "unavailable" });
   assert.deepEqual(storage.data, { other });
   assert.deepEqual(
     error.mock.calls.map((call) => call.arguments),
@@ -79,7 +79,7 @@ test("a quota failure on every write replies quota", async (t) => {
     throw new Error("exceeded storage quota");
   });
   const listener = await loadListener(storage);
-  assert.deepEqual(await listener(STORE), { error: "store-failed", reason: "quota" });
+  assert.deepEqual(await listener(STORE), { reason: "quota" });
   assert.deepEqual(storage.data, {});
 });
 
@@ -90,5 +90,5 @@ test("a read that fails replies unavailable", async (t) => {
     throw new Error("storage unavailable");
   };
   const listener = await loadListener(storage);
-  assert.deepEqual(await listener(STORE), { error: "store-failed", reason: "unavailable" });
+  assert.deepEqual(await listener(STORE), { reason: "unavailable" });
 });
