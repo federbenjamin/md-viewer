@@ -50,30 +50,22 @@ struct WelcomeView: View {
     }
 }
 #else
-struct WelcomeView: View {
-    @State private var shown: AppScreen?
+struct AppScreenSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let screen: AppScreen
 
     var body: some View {
-        HStack(spacing: 16) {
-            ForEach(AppScreen.allCases) { screen in
-                Button(screen.title) {
-                    shown = screen
-                }
-            }
-        }
-        .sheet(item: $shown) { screen in
-            NavigationStack {
-                screen.content
-                    .navigationTitle(screen.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") {
-                                shown = nil
-                            }
+        NavigationStack {
+            screen.content
+                .navigationTitle(screen.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            dismiss()
                         }
                     }
-            }
+                }
         }
     }
 }
