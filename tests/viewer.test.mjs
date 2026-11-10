@@ -22,10 +22,14 @@ function resetPage(dom) {
 }
 
 // One load of the real viewer page in `dom`'s tab. Resolves when the viewer has navigated, shown a message, or enabled Raw.
-async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent = "load" } = {}) {
+async function loadViewer(
+  dom,
+  { stored = {}, id = "doc", src = SRC, assetEvent = "load", sendMessage = async () => ({}) } = {},
+) {
   resetPage(dom);
   const { window } = dom;
   const replaced = [];
+  const sent = [];
   const settled = new Set(window.document.head.children);
   globalThis.window = window;
   globalThis.document = window.document;
@@ -35,7 +39,14 @@ async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent 
     replace: (url) => replaced.push(url),
   };
   globalThis.browser = {
-    runtime: { id: "ext" },
+    runtime: {
+      id: "ext",
+      sendMessage: async (message) => {
+        const reply = await sendMessage(message);
+        sent.push({ message, replacedAtReply: replaced.length });
+        return reply;
+      },
+    },
     storage: { session: { get: async (key) => (key in stored ? { [key]: stored[key] } : {}) } },
   };
 
@@ -53,7 +64,7 @@ async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent 
     }
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return { replaced, content, raw };
+  return { replaced, content, raw, sent };
 }
 
 const failRendering = (dom) => {
@@ -128,6 +139,68 @@ for (const [name, stored] of [
     assert.equal(second.content.textContent, UNAVAILABLE);
   });
 }
+
+test("the hop asks the background to clear the tab's mark and waits for the reply before leaving", async () => {
+  const dom = newTab();
+  const slowReply = async () => {
+    for (let tick = 0; tick < 20; tick++) await new Promise((resolve) => setImmediate(resolve));
+    return {};
+  };
+  const { replaced, sent } = await loadViewer(dom, { sendMessage: slowReply });
+  assert.deepEqual(sent, [{ message: { type: "clear-mark" }, replacedAtReply: 0 }]);
+  assert.deepEqual(replaced, [SRC]);
+});
+
+const ticks = async (count) => {
+  for (let tick = 0; tick < count; tick++) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("a rendered document marks its tab with its src, and again on every pageshow", async () => {
+  const dom = newTab();
+  const { sent } = await loadViewer(dom, { stored: { doc: { text: "# Hello", at: 1 } } });
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [{ type: "mark", src: SRC }],
+  );
+  dom.window.dispatchEvent(new dom.window.PageTransitionEvent("pageshow", { persisted: true }));
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [
+      { type: "mark", src: SRC },
+      { type: "mark", src: SRC },
+    ],
+  );
+});
+
+test("a document rendered after the first pageshow marks its tab once, then on every later pageshow", async () => {
+  const dom = newTab();
+  if (dom.window.document.readyState !== "complete") {
+    await new Promise((resolve) => dom.window.addEventListener("pageshow", resolve, { once: true }));
+  }
+  const { sent } = await loadViewer(dom, { stored: { doc: { text: "# Hello", at: 1 } } });
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [{ type: "mark", src: SRC }],
+  );
+  dom.window.dispatchEvent(new dom.window.PageTransitionEvent("pageshow", { persisted: true }));
+  await ticks(5);
+  assert.equal(sent.length, 2);
+});
+
+test("a miss marks nothing, whether it hops or shows the unavailable message", async () => {
+  const dom = newTab();
+  const hop = await loadViewer(dom);
+  const unavailable = await loadViewer(dom);
+  await ticks(5);
+  assert.equal(unavailable.content.textContent, UNAVAILABLE);
+  assert.deepEqual(
+    [...hop.sent, ...unavailable.sent].map(({ message }) => message),
+    [{ type: "clear-mark" }],
+  );
+});
 
 test("a store that reads back empty on every return ends after one hop", async () => {
   const dom = newTab();

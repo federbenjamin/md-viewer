@@ -6,6 +6,10 @@ import UIKit
 
 @main
 struct MDViewerApp: App {
+    #if os(iOS)
+    @State private var shownScreen: AppScreen?
+    #endif
+
     var body: some Scene {
         #if os(macOS)
         Window(Bundle.main.displayName, id: "welcome") {
@@ -20,12 +24,18 @@ struct MDViewerApp: App {
         }
 
         #if os(iOS)
+        // The launch scene's accessory views are decorative and take no taps, so the screens are its actions; actions replace the default Create Document.
         DocumentGroupLaunchScene(LocalizedStringResource(stringLiteral: Bundle.main.displayName)) {
+            ForEach(AppScreen.allCases) { screen in
+                Button(screen.title) {
+                    shownScreen = screen
+                }
+            }
         } background: {
             Color(uiColor: .systemGroupedBackground)
-        } overlayAccessoryView: { geometry in
-            WelcomeView()
-                .position(x: geometry.frame.midX, y: geometry.frame.minY + 64)
+                .sheet(item: $shownScreen) { screen in
+                    AppScreenSheet(screen: screen)
+                }
         }
         #endif
     }
