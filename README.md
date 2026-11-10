@@ -38,7 +38,7 @@ sh scripts/checks.sh
 
 ## Known limits
 
-- The address bar shows the extension's address, not the document's.
+- On iPhone the address bar is empty on the viewer page instead of showing the document's address; on a Mac it is expected to show the extension's address, unconfirmed until the Safari checks are run there.
 - Raw text can flash before the viewer appears.
 - Local files show remote images only; a relative image shows its alt text.
 - A Personal Team iPhone install lapses after 7 days.
