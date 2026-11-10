@@ -6,6 +6,7 @@ body {
   margin: 0;
   background: Canvas;
   color: CanvasText;
+  font-family: system-ui, sans-serif;
 }
 
 .toolbar {
