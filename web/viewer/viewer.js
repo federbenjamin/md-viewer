@@ -67,6 +67,17 @@ async function renderDocument({ text, src }) {
   enableRawToggle(text);
 }
 
+// Back from a later page clears the tab's mark on the way; marking on every show, a back-forward cache restore
+// included, lets the next Back leave this src's raw page raw. The first pageshow follows readyState "complete".
+function markTabOnEveryShow(src) {
+  const mark = () =>
+    browser.runtime.sendMessage({ type: "mark", src }).catch((error) => {
+      console.error("mdviewer: marking the tab failed:", errorClass(error));
+    });
+  window.addEventListener("pageshow", mark);
+  if (document.readyState === "complete") mark();
+}
+
 async function main() {
   let source;
   try {
@@ -79,7 +90,10 @@ async function main() {
 
   try {
     if (source.missing) await handleMissing(source.src);
-    else await renderDocument(source);
+    else {
+      await renderDocument(source);
+      if (source.src !== null) markTabOnEveryShow(source.src);
+    }
   } catch (error) {
     console.error("mdviewer: rendering failed:", errorClass(error));
     if (source.missing) {

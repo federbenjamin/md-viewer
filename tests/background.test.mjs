@@ -71,6 +71,22 @@ test("clear-mark removes the sender tab's mark, so the next store of that src re
   assert.deepEqual(await listener({ type: "clear-mark" }, {}), {});
 });
 
+test("mark sets the sender tab's mark to src, so the next store of that src from the tab is a return", async () => {
+  const storage = storageWith({});
+  const listener = await loadListener(storage);
+  const sender = { tab: { id: 4 } };
+  assert.deepEqual(await listener({ type: "mark", src: SRC }, sender), {});
+  assert.equal(storage.data["mdviewer-tab:4"], SRC);
+  assert.deepEqual(await listener(STORE, sender), { reason: "returned" });
+});
+
+test("mark with no tab id sets nothing", async () => {
+  const storage = storageWith({});
+  const listener = await loadListener(storage);
+  assert.deepEqual(await listener({ type: "mark", src: SRC }, {}), {});
+  assert.deepEqual(storage.data, {});
+});
+
 test("a message that is not a store request gets no reply", async () => {
   const listener = await loadListener(storageWith({}));
   assert.equal(listener({ type: "other" }), undefined);

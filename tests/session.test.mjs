@@ -10,6 +10,7 @@ const {
   staleIds,
   isReturn,
   storeDocument,
+  setTabMark,
   clearTabMark,
   readDocument,
   claimRedirect,
@@ -26,6 +27,7 @@ test("the session API is published as a frozen global", () => {
     "isReturn",
     "readDocument",
     "readViewerQuery",
+    "setTabMark",
     "settleRedirect",
     "staleIds",
     "storeDocument",
@@ -152,6 +154,24 @@ test("storeDocument with no tab id stores as before and leaves every mark alone"
   const { id } = await storeDocument(storage, "# a", DOC, undefined);
   assert.deepEqual(Object.keys(storage.data).sort(), [MARK, id].sort());
   assert.equal(storage.data[MARK], DOC);
+});
+
+test("setTabMark marks the tab with the src, so the next store of that src from the tab is a return", async () => {
+  const storage = memoryStorage({ [MARK]: "https://h.example/b.md", doc: { text: "t", at: 1 } });
+  await setTabMark(storage, 7, DOC);
+  assert.equal(storage.data[MARK], DOC);
+  assert.ok(storage.data.doc);
+  assert.deepEqual(await storeDocument(storage, "# a", DOC, 7), { returned: true });
+});
+
+test("setTabMark does nothing without a tab id or a string src, and resolves when the write fails", async () => {
+  const storage = memoryStorage();
+  await setTabMark(storage, undefined, DOC);
+  await setTabMark(storage, 7, undefined);
+  assert.deepEqual(storage.data, {});
+  assert.equal(storage.calls.sets, 0);
+  const failing = memoryStorage({}, [new Error("broken")]);
+  await assert.doesNotReject(setTabMark(failing, 7, DOC));
 });
 
 test("clearTabMark removes only that tab's mark, and does nothing without a tab id", async () => {

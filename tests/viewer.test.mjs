@@ -151,10 +151,55 @@ test("the hop asks the background to clear the tab's mark and waits for the repl
   assert.deepEqual(replaced, [SRC]);
 });
 
-test("a rendered document sends no message", async () => {
+const ticks = async (count) => {
+  for (let tick = 0; tick < count; tick++) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("a rendered document marks its tab with its src, and again on every pageshow", async () => {
   const dom = newTab();
   const { sent } = await loadViewer(dom, { stored: { doc: { text: "# Hello", at: 1 } } });
-  assert.deepEqual(sent, []);
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [{ type: "mark", src: SRC }],
+  );
+  dom.window.dispatchEvent(new dom.window.PageTransitionEvent("pageshow", { persisted: true }));
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [
+      { type: "mark", src: SRC },
+      { type: "mark", src: SRC },
+    ],
+  );
+});
+
+test("a document rendered after the first pageshow marks its tab once, then on every later pageshow", async () => {
+  const dom = newTab();
+  if (dom.window.document.readyState !== "complete") {
+    await new Promise((resolve) => dom.window.addEventListener("pageshow", resolve, { once: true }));
+  }
+  const { sent } = await loadViewer(dom, { stored: { doc: { text: "# Hello", at: 1 } } });
+  await ticks(5);
+  assert.deepEqual(
+    sent.map(({ message }) => message),
+    [{ type: "mark", src: SRC }],
+  );
+  dom.window.dispatchEvent(new dom.window.PageTransitionEvent("pageshow", { persisted: true }));
+  await ticks(5);
+  assert.equal(sent.length, 2);
+});
+
+test("a miss marks nothing, whether it hops or shows the unavailable message", async () => {
+  const dom = newTab();
+  const hop = await loadViewer(dom);
+  const unavailable = await loadViewer(dom);
+  await ticks(5);
+  assert.equal(unavailable.content.textContent, UNAVAILABLE);
+  assert.deepEqual(
+    [...hop.sent, ...unavailable.sent].map(({ message }) => message),
+    [{ type: "clear-mark" }],
+  );
 });
 
 test("a store that reads back empty on every return ends after one hop", async () => {

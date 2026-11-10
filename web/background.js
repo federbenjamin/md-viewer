@@ -1,5 +1,8 @@
 browser.runtime.onMessage.addListener((message, sender) => {
   const tabId = sender?.tab?.id;
+  if (message?.type === "mark") {
+    return MDViewerSession.setTabMark(browser.storage.session, tabId, message.src).then(() => ({}));
+  }
   if (message?.type === "clear-mark") {
     return MDViewerSession.clearTabMark(browser.storage.session, tabId).then(() => ({}));
   }

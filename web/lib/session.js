@@ -84,6 +84,16 @@
     }
   }
 
+  async function setTabMark(storage, tabId, src) {
+    const key = tabMarkKey(tabId);
+    if (key === null || typeof src !== "string") return;
+    try {
+      await storage.set({ [key]: src });
+    } catch {
+      // A mark that is not set only renders the raw page again on Back; the viewer is already showing.
+    }
+  }
+
   async function clearTabMark(storage, tabId) {
     const key = tabMarkKey(tabId);
     if (key === null) return;
@@ -131,6 +141,7 @@
     staleIds,
     isReturn,
     storeDocument,
+    setTabMark,
     clearTabMark,
     readDocument,
     claimRedirect,
