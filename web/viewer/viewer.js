@@ -40,10 +40,13 @@ function enableRawToggle(text) {
   rawButton.disabled = false;
 }
 
-function handleMissing(src) {
+async function handleMissing(src) {
   // Back on the page itself, the content script stores the text afresh; the viewer never fetches src.
-  if (src !== null && globalThis.MDViewerSession.claimRedirect(window, src)) location.replace(src);
-  else showMessage(UNAVAILABLE);
+  if (src !== null && globalThis.MDViewerSession.claimRedirect(window, src)) {
+    // The tab's mark would keep the raw page raw, as on Back; this hop must render.
+    await browser.runtime.sendMessage({ type: "clear-mark" });
+    location.replace(src);
+  } else showMessage(UNAVAILABLE);
 }
 
 async function renderDocument({ text, src }) {
@@ -75,7 +78,7 @@ async function main() {
   }
 
   try {
-    if (source.missing) handleMissing(source.src);
+    if (source.missing) await handleMissing(source.src);
     else await renderDocument(source);
   } catch (error) {
     console.error("mdviewer: rendering failed:", errorClass(error));

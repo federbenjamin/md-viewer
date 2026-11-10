@@ -22,10 +22,14 @@ function resetPage(dom) {
 }
 
 // One load of the real viewer page in `dom`'s tab. Resolves when the viewer has navigated, shown a message, or enabled Raw.
-async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent = "load" } = {}) {
+async function loadViewer(
+  dom,
+  { stored = {}, id = "doc", src = SRC, assetEvent = "load", sendMessage = async () => ({}) } = {},
+) {
   resetPage(dom);
   const { window } = dom;
   const replaced = [];
+  const sent = [];
   const settled = new Set(window.document.head.children);
   globalThis.window = window;
   globalThis.document = window.document;
@@ -35,7 +39,14 @@ async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent 
     replace: (url) => replaced.push(url),
   };
   globalThis.browser = {
-    runtime: { id: "ext" },
+    runtime: {
+      id: "ext",
+      sendMessage: async (message) => {
+        const reply = await sendMessage(message);
+        sent.push({ message, replacedAtReply: replaced.length });
+        return reply;
+      },
+    },
     storage: { session: { get: async (key) => (key in stored ? { [key]: stored[key] } : {}) } },
   };
 
@@ -53,7 +64,7 @@ async function loadViewer(dom, { stored = {}, id = "doc", src = SRC, assetEvent 
     }
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return { replaced, content, raw };
+  return { replaced, content, raw, sent };
 }
 
 const failRendering = (dom) => {
@@ -128,6 +139,23 @@ for (const [name, stored] of [
     assert.equal(second.content.textContent, UNAVAILABLE);
   });
 }
+
+test("the hop asks the background to clear the tab's mark and waits for the reply before leaving", async () => {
+  const dom = newTab();
+  const slowReply = async () => {
+    for (let tick = 0; tick < 20; tick++) await new Promise((resolve) => setImmediate(resolve));
+    return {};
+  };
+  const { replaced, sent } = await loadViewer(dom, { sendMessage: slowReply });
+  assert.deepEqual(sent, [{ message: { type: "clear-mark" }, replacedAtReply: 0 }]);
+  assert.deepEqual(replaced, [SRC]);
+});
+
+test("a rendered document sends no message", async () => {
+  const dom = newTab();
+  const { sent } = await loadViewer(dom, { stored: { doc: { text: "# Hello", at: 1 } } });
+  assert.deepEqual(sent, []);
+});
 
 test("a store that reads back empty on every return ends after one hop", async () => {
   const dom = newTab();

@@ -4,8 +4,17 @@ import { test } from "node:test";
 
 // session.js is a classic script: importing it runs it and publishes the global.
 await import("../web/lib/session.js");
-const { viewerQuery, readViewerQuery, staleIds, storeDocument, readDocument, claimRedirect, settleRedirect } =
-  globalThis.MDViewerSession;
+const {
+  viewerQuery,
+  readViewerQuery,
+  staleIds,
+  isReturn,
+  storeDocument,
+  clearTabMark,
+  readDocument,
+  claimRedirect,
+  settleRedirect,
+} = globalThis.MDViewerSession;
 
 const ID = "3f2b8c1e-5a4d-4e0b-9c7a-1d2e3f4a5b6c";
 
@@ -13,6 +22,8 @@ test("the session API is published as a frozen global", () => {
   assert.ok(Object.isFrozen(globalThis.MDViewerSession));
   assert.deepEqual(Object.keys(globalThis.MDViewerSession).sort(), [
     "claimRedirect",
+    "clearTabMark",
+    "isReturn",
     "readDocument",
     "readViewerQuery",
     "settleRedirect",
@@ -101,6 +112,84 @@ test("a storage read that rejects resolves to unavailable and writes nothing", a
   };
   assert.deepEqual(await storeDocument(storage, "x"), { reason: "unavailable", errorName: "TypeError" });
   assert.equal(storage.calls.sets, 0);
+});
+
+const DOC = "https://h.example/a.md";
+const MARK = "mdviewer-tab:7";
+
+test("isReturn holds only for the src last sent to the viewer from that same tab", () => {
+  const entries = { [MARK]: DOC };
+  assert.equal(isReturn(entries, 7, DOC), true);
+  assert.equal(isReturn(entries, 7, "https://h.example/b.md"), false);
+  assert.equal(isReturn(entries, 8, DOC), false);
+  assert.equal(isReturn(entries, undefined, DOC), false);
+  assert.equal(isReturn({}, 7, DOC), false);
+});
+
+test("storeDocument from a tab stores the document and marks the tab with its src", async () => {
+  const storage = memoryStorage();
+  const { id } = await storeDocument(storage, "# a", DOC, 7);
+  assert.deepEqual(Object.keys(storage.data).sort(), [MARK, id].sort());
+  assert.equal(storage.data[MARK], DOC);
+});
+
+test("storeDocument for the src the tab is marked with is a return: it stores nothing and clears the mark", async () => {
+  const storage = memoryStorage({ [MARK]: DOC });
+  assert.deepEqual(await storeDocument(storage, "# a", DOC, 7), { returned: true });
+  assert.deepEqual(storage.data, {});
+  assert.ok((await storeDocument(storage, "# a", DOC, 7)).id);
+});
+
+test("storeDocument for a different src in the same tab stores it and moves the mark", async () => {
+  const storage = memoryStorage({ [MARK]: DOC });
+  const { id } = await storeDocument(storage, "# b", "https://h.example/b.md", 7);
+  assert.ok(id);
+  assert.equal(storage.data[MARK], "https://h.example/b.md");
+});
+
+test("storeDocument with no tab id stores as before and leaves every mark alone", async () => {
+  const storage = memoryStorage({ [MARK]: DOC });
+  const { id } = await storeDocument(storage, "# a", DOC, undefined);
+  assert.deepEqual(Object.keys(storage.data).sort(), [MARK, id].sort());
+  assert.equal(storage.data[MARK], DOC);
+});
+
+test("clearTabMark removes only that tab's mark, and does nothing without a tab id", async () => {
+  const storage = memoryStorage({ [MARK]: DOC, "mdviewer-tab:8": DOC, doc: { text: "t", at: 1 } });
+  await clearTabMark(storage, undefined);
+  assert.equal(Object.keys(storage.data).length, 3);
+  await clearTabMark(storage, 7);
+  assert.deepEqual(Object.keys(storage.data).sort(), ["doc", "mdviewer-tab:8"]);
+  assert.ok((await storeDocument(storage, "# a", DOC, 7)).id);
+});
+
+test("clearTabMark resolves even when the removal fails", async () => {
+  const storage = memoryStorage({ [MARK]: DOC });
+  storage.remove = async () => {
+    throw new Error("broken");
+  };
+  await assert.doesNotReject(clearTabMark(storage, 7));
+});
+
+test("marks neither count toward nor fall to eviction, so 20 documents remain beside them", async () => {
+  const marks = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`mdviewer-tab:${i}`, DOC]));
+  const docs = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`e${i}`, { text: "t", at: i + 1 }]));
+  const storage = memoryStorage({ ...marks, ...docs });
+  await storeDocument(storage, "new", "https://h.example/new.md", 9);
+  const keys = Object.keys(storage.data);
+  assert.equal(keys.filter((key) => !key.startsWith("mdviewer-tab:")).length, 20);
+  for (const key of Object.keys(marks)) assert.equal(storage.data[key], DOC);
+  assert.equal(storage.data["mdviewer-tab:9"], "https://h.example/new.md");
+});
+
+test("a quota retry clears the other documents but keeps the marks", async () => {
+  const storage = memoryStorage({ a: { text: "a", at: 1 }, "mdviewer-tab:3": DOC }, [quotaError()]);
+  const { id } = await storeDocument(storage, "big", "https://h.example/new.md", 9);
+  assert.deepEqual(Object.keys(storage.data).sort(), ["mdviewer-tab:3", "mdviewer-tab:9", id].sort());
+});
+
+test("staleIds never returns a mark", () => {
+  assert.deepEqual(staleIds({ [MARK]: DOC, a: { at: 1 }, b: { at: 2 } }, 0).sort(), ["a", "b"]);
 });
 
 test("readDocument tells an empty document from an absent or malformed entry", async () => {

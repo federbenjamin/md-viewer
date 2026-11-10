@@ -44,6 +44,33 @@ test("a stored document replies with the viewer's address and logs nothing", asy
   assert.equal(error.mock.calls.length, 0);
 });
 
+test("a store from a tab that is back on the src it last sent to the viewer replies returned and stores nothing", async () => {
+  const storage = storageWith({});
+  const listener = await loadListener(storage);
+  const sender = { tab: { id: 4 } };
+  assert.ok((await listener(STORE, sender)).url);
+  const stored = Object.keys(storage.data).length;
+  assert.deepEqual(await listener(STORE, sender), { reason: "returned" });
+  assert.equal(Object.keys(storage.data).length, stored - 1);
+  assert.ok((await listener(STORE, sender)).url);
+});
+
+test("a store with no tab id always replies with the viewer's address", async () => {
+  const listener = await loadListener(storageWith({}));
+  assert.ok((await listener(STORE, {})).url);
+  assert.ok((await listener(STORE, undefined)).url);
+});
+
+test("clear-mark removes the sender tab's mark, so the next store of that src renders", async () => {
+  const storage = storageWith({});
+  const listener = await loadListener(storage);
+  const sender = { tab: { id: 4 } };
+  await listener(STORE, sender);
+  assert.deepEqual(await listener({ type: "clear-mark" }, sender), {});
+  assert.ok((await listener(STORE, sender)).url);
+  assert.deepEqual(await listener({ type: "clear-mark" }, {}), {});
+});
+
 test("a message that is not a store request gets no reply", async () => {
   const listener = await loadListener(storageWith({}));
   assert.equal(listener({ type: "other" }), undefined);

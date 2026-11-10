@@ -3,6 +3,9 @@
   // storage.session holds 10 MB in all; the newest documents stay.
   const KEEP_BEFORE_WRITE = 19;
   const REDIRECT_MARKER = "mdviewer-src-redirect:";
+  // Back reloads the raw page with nothing in it to tell it from a fresh visit (iOS 27.2), so the background
+  // remembers, per tab, the src it last sent to the viewer. Marks live beside documents under their own prefix.
+  const TAB_MARK = "mdviewer-tab:";
 
   function viewerQuery(id, src) {
     return "?id=" + encodeURIComponent(id) + "&src=" + encodeURIComponent(src);
@@ -23,8 +26,22 @@
     return { id: params.get("id") || null, src: httpUrlOrNull(params.get("src")) };
   }
 
+  function tabMarkKey(tabId) {
+    return Number.isInteger(tabId) ? TAB_MARK + tabId : null;
+  }
+
+  function isTabMark(key) {
+    return key.startsWith(TAB_MARK);
+  }
+
+  function isReturn(entries, tabId, src) {
+    const key = tabMarkKey(tabId);
+    return key !== null && entries[key] === src;
+  }
+
   function staleIds(entries, keep) {
     return Object.entries(entries)
+      .filter(([id]) => !isTabMark(id))
       .sort(([, a], [, b]) => (Number(b?.at) || 0) - (Number(a?.at) || 0))
       .slice(Math.max(0, keep))
       .map(([id]) => id);
@@ -40,22 +57,40 @@
       await storage.set(record);
     } catch (error) {
       if (!isQuotaError(error)) throw error;
-      const others = Object.keys(await storage.get(null)).filter((key) => key !== id);
+      const others = Object.keys(await storage.get(null)).filter((key) => key !== id && !isTabMark(key));
       if (others.length > 0) await storage.remove(others);
       await storage.set(record);
     }
   }
 
-  // Resolves to { id } or { reason, errorName }; it never rejects.
-  async function storeDocument(storage, text) {
+  // Resolves to { id }, { returned: true } or { reason, errorName }; it never rejects.
+  async function storeDocument(storage, text, src, tabId) {
     const id = crypto.randomUUID();
     try {
-      const stale = staleIds(await storage.get(null), KEEP_BEFORE_WRITE);
+      const entries = await storage.get(null);
+      const markKey = tabMarkKey(tabId);
+      if (isReturn(entries, tabId, src)) {
+        await storage.remove([markKey]);
+        return { returned: true };
+      }
+      const stale = staleIds(entries, KEEP_BEFORE_WRITE);
       if (stale.length > 0) await storage.remove(stale);
-      await writeOrMakeRoom(storage, id, { [id]: { text, at: Date.now() } });
+      const record = { [id]: { text, at: Date.now() } };
+      if (markKey !== null) record[markKey] = src;
+      await writeOrMakeRoom(storage, id, record);
       return { id };
     } catch (error) {
       return { reason: isQuotaError(error) ? "quota" : "unavailable", errorName: error?.name ?? "unknown" };
+    }
+  }
+
+  async function clearTabMark(storage, tabId) {
+    const key = tabMarkKey(tabId);
+    if (key === null) return;
+    try {
+      await storage.remove([key]);
+    } catch {
+      // A mark that stays only keeps the raw page on the next visit to that src; the hop still goes ahead.
     }
   }
 
@@ -94,7 +129,9 @@
     viewerQuery,
     readViewerQuery,
     staleIds,
+    isReturn,
     storeDocument,
+    clearTabMark,
     readDocument,
     claimRedirect,
     settleRedirect,
